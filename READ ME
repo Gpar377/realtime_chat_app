@@ -1,0 +1,64 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from processing import get_clustered_data
+import os
+
+# --- Page Configuration ---
+st.set_page_config(
+    page_title="Netflix Show Recommender",
+    page_icon="🎬",
+    layout="wide"
+)
+
+# --- Data Loading ---
+@st.cache_data
+def load_data():
+    """Load the clustered data, running the pipeline if the output file doesn't exist."""
+    output_path = 'data/netflix_clustered.csv'
+    if not os.path.exists(output_path):
+        st.info("Running clustering pipeline for the first time. This may take a moment...")
+        df = get_clustered_data('data/netflix_titles.csv')
+        df.to_csv(output_path, index=False)
+    else:
+        df = pd.read_csv(output_path)
+    return df
+
+df = load_data()
+
+# --- UI ---
+st.title("🎬 Netflix Show Recommender")
+st.markdown("Find similar shows and movies based on genre, rating, and duration.")
+
+# --- Recommender Section ---
+st.header("Find Shows Like...")
+
+show_list = df['title'].unique()
+selected_show = st.selectbox("Select a show or movie:", show_list)
+
+if selected_show:
+    # Find the cluster of the selected show
+    try:
+        show_cluster = df[df['title'] == selected_show]['cluster'].iloc[0]
+        
+        # Get other shows from the same cluster
+        recommendations = df[
+            (df['cluster'] == show_cluster) & 
+            (df['title'] != selected_show)
+        ].head(10)
+
+        st.subheader(f"Because you watched '{selected_show}', you might like:")
+        
+        if not recommendations.empty:
+            for index, row in recommendations.iterrows():
+                st.write(f"- **{row['title']}** ({row['release_year']}) - *{row['type']}*")
+        else:
+            st.write("No other similar shows found in this cluster.")
+
+    except IndexError:
+        st.error("Show not found in the dataset. Please select another.")
+
+# --- Cluster Exploration (Optional) ---
+st.header("Explore the Clusters")
+fig = px.scatter(df, x='release_year', y='duration_numeric', color='cluster', hover_name='title', title="Clusters by Release Year and Duration")
+st.plotly_chart(fig, use_container_width=True)
